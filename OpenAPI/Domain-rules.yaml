@@ -1,1 +1,125 @@
+document:
+  title: Movie League - Domain Rules & Invariants
+  version: 1.0.0
+  scope: "Implementation-agnostic business rules that must always hold."
+  authoritative_for:
+    - invariants
+    - lifecycle_rules
+    - edge_case_behavior
+  non_goals:
+    - http_endpoints
+    - json_schemas
+    - database_schema
+    - framework_details
+
+definitions:
+  roles:
+    - ADMIN
+    - MEMBER
+
+  round_statuses:
+    - SUBMISSION
+    - VOTING
+    - CLOSED
+
+league_rules:
+  invariants:
+    - id: LEAGUE_ADMIN_SINGLETON
+      statement: "A league has exactly one admin at all times."
+    - id: LEAGUE_ADMIN_REASSIGN_ON_LEAVE
+      statement: "If the admin leaves a league, the admin role is automatically reassigned to another active member."
+    - id: LEAGUE_ONE_ACTIVE_ROUND
+      statement: "A league may have many rounds but at most one active round at a time."
+
+  membership:
+    removal:
+      allowed_by: ADMIN
+      effects:
+        - "Member is no longer considered active for future participation checks."
+        - "If the removed member already submitted for the current round, that submission remains valid for that round."
+        - "If the removed member already voted for the current round, that vote remains valid for that round."
+    join:
+      notes:
+        - "Join mechanism (invite code, link, etc.) is an implementation detail."
+
+round_lifecycle:
+  states: [SUBMISSION, VOTING, CLOSED]
+
+  transitions:
+    - id: ROUND_SUBMISSION_TO_VOTING
+      from: SUBMISSION
+      to: VOTING
+      trigger: AUTOMATIC
+      conditions:
+        - "All active members have submitted a movie."
+      optional_deadline_condition:
+        enabled_if: "Deadlines are enabled for the league/round"
+        condition: "submissionDeadline is reached"
+      notes:
+        - "Transition is not triggered manually by an admin."
+
+    - id: ROUND_VOTING_TO_CLOSED
+      from: VOTING
+      to: CLOSED
+      trigger: AUTOMATIC
+      conditions:
+        - "All active members have submitted votes."
+      optional_deadline_condition:
+        enabled_if: "Deadlines are enabled for the league/round"
+        condition: "votingDeadline is reached"
+      notes:
+        - "Transition is not triggered manually by an admin."
+
+submission_rules:
+  per_round_limits:
+    - id: SUBMISSION_ONE_PER_USER
+      statement: "Each active member may submit exactly one movie per round."
+  allowed_states:
+    - state: SUBMISSION
+      allowed: true
+    - state: VOTING
+      allowed: false
+    - state: CLOSED
+      allowed: false
+  mutability:
+    - id: SUBMISSION_IMMUTABLE
+      statement: "Submissions cannot be edited or deleted once created."
+  edge_cases:
+    - id: SUBMISSION_REMAINS_AFTER_REMOVAL
+      statement: "If a member is removed after submitting, their submission remains valid for the active round."
+
+voting_rules:
+  ballot_type: RANKED
+  per_round_limits:
+    - id: VOTE_ONE_PER_USER
+      statement: "Each active member may submit votes exactly once per round."
+  allowed_states:
+    - state: SUBMISSION
+      allowed: false
+    - state: VOTING
+      allowed: true
+    - state: CLOSED
+      allowed: false
+  mutability:
+    - id: VOTE_FINAL
+      statement: "Votes are final and cannot be changed once submitted."
+  constraints:
+    - id: NO_SELF_VOTING
+      statement: "Members may not vote for their own submission."
+  edge_cases:
+    - id: VOTE_REMAINS_AFTER_REMOVAL
+      statement: "If a member is removed after voting, their vote remains valid for the active round."
+
+results_visibility:
+  rules:
+    - id: RESULTS_HIDDEN_UNTIL_CLOSED
+      statement: "Round results and scores are hidden until the round reaches CLOSED."
+    - id: RESULTS_RELEASE_SIMULTANEOUS
+      statement: "Results become visible to all members simultaneously once the round is CLOSED."
+
+invariant_summary:
+  - "There is always at most one active round per league."
+  - "Submissions and votes are immutable once created."
+  - "Round progression is automatic and deterministic."
+  - "Removing a member does not invalidate already-submitted data for the active round."
 
